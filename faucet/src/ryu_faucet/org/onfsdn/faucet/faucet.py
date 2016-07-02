@@ -36,6 +36,8 @@ from ryu.lib.packet import ethernet
 from ryu.lib.packet import vlan
 from ryu.lib import hub
 
+from nsodbc import nsodbc_factory
+
 
 class EventFaucetReconfigure(event.EventBase):
     pass
@@ -108,6 +110,16 @@ class Faucet(app_manager.RyuApp):
         self.valve = valve_factory(dp)
         if self.valve is None:
             self.logger.error("Hardware type not supported")
+	
+	self.nsodbc = nsodbc_factory()
+	self.conn = self.nsodbc.connect('driver=couchdb;server=localhost;' + \
+                    'uid=root;pwd=admin')
+	try:
+            self.switch_database = self.conn.create('switches')
+	except Exception, e:
+	    self.switch_database = self.conn['switches']
+            if not self.switch_database:
+                raise 
 
         self.gateway_resolve_request_thread = hub.spawn(
             self.gateway_resolve_request)
@@ -136,6 +148,9 @@ class Faucet(app_manager.RyuApp):
 
     def send_flow_msgs(self, dp, flow_msgs):
         self.valve.ofchannel_log(flow_msgs)
+        f=open('out','w')
+        f.write(str(dp) + str(flow_msgs) + str(dir(flow_msgs)))
+        f.close()
         for flow_msg in flow_msgs:
             flow_msg.datapath = dp
             dp.send_msg(flow_msg)
@@ -206,6 +221,9 @@ class Faucet(app_manager.RyuApp):
     @kill_on_exception(exc_logname)
     def handler_connect_or_disconnect(self, ev):
         dp = ev.dp
+	
+	switch_object = {'_id': str(hex(dp.id)), 'data':str(dp.__dict__), 'flows':[]}
+	self.switch_database.insert_update_doc(switch_object, '')
 
         if not ev.enter:
             # Datapath down message
