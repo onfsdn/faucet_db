@@ -111,14 +111,23 @@ class Faucet(app_manager.RyuApp):
         if self.valve is None:
             self.logger.error("Hardware type not supported")
 	
-	self.nsodbc = nsodbc_factory()
-	self.conn = self.nsodbc.connect('driver=couchdb;server=localhost;' + \
-                    'uid=root;pwd=admin')
-	try:
-            self.switch_database = self.conn.create('switches')
-	except Exception, e:
-	    self.switch_database = self.conn['switches']
+        self.nsodbc = nsodbc_factory()
+        self.conn = self.nsodbc.connect('driver=couchdb;server=localhost;' + \
+                        'uid=root;pwd=admin')
+        try:
+            self.switch_database = self.conn.create('switches_bak')
+        except Exception, e:
+            self.switch_database = self.conn['switches_bak']
             if not self.switch_database:
+                raise 
+        
+        self.conn1 = self.nsodbc.connect('driver=couchdb;server=localhost;' + \
+                        'uid=root;pwd=admin')
+        try:
+            self.flow_database = self.conn1.create('flows_bak')
+        except Exception, e:
+            self.flow_database = self.conn1['flows_bak']
+            if not self.flow_database:
                 raise 
 
         self.gateway_resolve_request_thread = hub.spawn(
@@ -146,14 +155,23 @@ class Faucet(app_manager.RyuApp):
                 self.logger.exception("Error in config file:")
         return None
 
-    def send_flow_msgs(self, dp, flow_msgs):
+    def send_flow_msgs(self, dp, flow_msgs):        
         self.valve.ofchannel_log(flow_msgs)
-        f=open('out','w')
-        f.write(str(dp) + str(flow_msgs) + str(dir(flow_msgs)))
-        f.close()
+        switch = None
+        try:
+            rows = self.switch_database.get_docs('_design/switches/_view/switch', key=str(hex(dp.id)))
+            switch = rows[0]
+        except:
+            # switch event not triggered yet
+            switch = None
         for flow_msg in flow_msgs:
             flow_msg.datapath = dp
             dp.send_msg(flow_msg)
+            flow_object = {'data':flow_msg.to_jsondict(), 'tags': []}
+            flow_id = self.flow_database.insert_update_doc(flow_object, '')
+            if switch:
+                switch.value['data']['flows'].append(flow_id)
+                self.switch_database.insert_update_doc(switch.value, 'data')
 
     def signal_handler(self, sigid, frame):
         if sigid == signal.SIGHUP:
@@ -221,14 +239,22 @@ class Faucet(app_manager.RyuApp):
     @kill_on_exception(exc_logname)
     def handler_connect_or_disconnect(self, ev):
         dp = ev.dp
-	
-	switch_object = {'_id': str(hex(dp.id)), 'data':str(dp.__dict__), 'flows':[]}
-	self.switch_database.insert_update_doc(switch_object, '')
+
+        switch_object = {'_id': str(hex(dp.id)), 'data':{'flows':[]}}
+        self.switch_database.insert_update_doc(switch_object, 'data')
 
         if not ev.enter:
             # Datapath down message
             self.logger.debug('DP %s disconnected' % str(dp.id))
             self.valve.datapath_disconnect(dp.id)
+
+            rows = self.switch_database.get_docs('_design/switches/_view/switch', key=str(hex(dp.id)))
+            switch = rows[0].value
+            for flow_id in switch['data']['flows']:
+                 self.flow_database.delete_doc(str(flow_id))
+
+            # Delete switch from database
+            self.switch_database.delete_doc(str(hex(dp.id)))
             return
 
         self.logger.debug('DP %s connected' % str(dp.id))
