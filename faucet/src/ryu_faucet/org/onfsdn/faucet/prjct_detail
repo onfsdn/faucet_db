@@ -1,0 +1,37 @@
+{
+   "_id": "0x70b3d56cd3acL",
+   "_rev": "1-78917c8830878f1d4c1e0232fd5a5038",
+   "data": "{'xid': 2879538148L, 'socket': <eventlet.greenio.base.GreenSocket object at 0x75c1d330>, 'ofp_brick': <ryu.controller.ofp_handler.OFPHandler object at 0x75c7d570>, '_ports': None, 'is_active': True, 'max_unreplied_echo_requests': 5, 'echo_request_interval': 3.0, 'flow_format': 0, 'state': 'main', 'send_q': <LightQueue at 0x75c1d7b0 maxsize=16 getters[1]>, 'ofproto_parser': <module 'ryu.ofproto.ofproto_v1_3_parser' from '/usr/local/lib/python2.7/dist-packages/ryu/ofproto/ofproto_v1_3_parser.pyc'>, 'unreplied_echo_requests': [], 'address': ('10.0.1.99', 52916), 'ofproto': <module 'ryu.ofproto.ofproto_v1_3' from '/usr/local/lib/python2.7/dist-packages/ryu/ofproto/ofproto_v1_3.pyc'>, 'id': 123917682135980L, '_send_q_sem': <BoundedSemaphore at 0x75c1d790 c=16 _w[0]>, 'ports': {1: OFPPort(port_no=1,hw_addr='e6:35:d5:3b:25:c5',name='eth0',config=0,state=1,curr=2056,advertised=0,supported=0,peer=0,curr_speed=0,max_speed=0), 2: OFPPort(port_no=2,hw_addr='c1:8d:34:b6:d5:e3',name='eth1',config=0,state=4,curr=2056,advertised=0,supported=0,peer=0,curr_speed=0,max_speed=0), 3: OFPPort(port_no=3,hw_addr='c7:2e:4b:55:96:df',name='eth2',config=0,state=1,curr=2056,advertised=0,supported=0,peer=0,curr_speed=0,max_speed=0)}}",
+   "flows": [
+   ]
+}
+
+switch_obj = str(dp.__dict__)
+for key in switch_obj:
+	if key == 'address':
+		ip_addr = swtich_obj[key][0]
+
+		    Ryu faucet + pyodbc integration for storing flows; Use http://couchdb.apache.org/ as database for example.  [Requirements: NoSQL databases, JSON, REST, Python]
+
+Basically, we want a generic database driver such as pyodbc [1] be integrated into Ryu/Faucet [2] [3].  Basically Faucet is an application written on top of Ryu SDN controller.  Our focus is Faucet.  A controller pushes flows on to the Switch.  Controller is the only one who can push or delete a flow (JSON) on the Switch.  State of currently installed flows is requested by a large number of applications written to a controller.  If we have that information in a database corresponding to a datapath_id (UID) of the switch, then the database can provide the switch information at that point in time.
+
+Store flows based on application in the database.  Also see the requirements provided to Application: Flow Manager.  Think about using tags to tag pieces of data.  Tagged data can be supplied to UX applications for providing various views on data [5]
+
+You will need to keep store flows per application.  So, if Application A has a flow - mirror traffic from port 1 to 5 in Table 5  and Application P has the exact same flow, only one instance will be there on the switch.  So, when Application A is removed, make sure that the flow for Application P continues to be there.  So, you will need a way to keep track of dependencies.
+
+This project is about integrating Pyodbc to Ryu/faucet, using Couch DB [4] as the database to store flows in JSON format.  Write test routines to get/update/delete flows into the database. 
+
+Application: Flow Manager UI will be the customers of this project output.
+
+
+
+    Application: Flow Manager - A UI program to get real-time info on flows installed on the switches managed by a controller - interrogate controller database;; Focus is on UX; Bonus: integration of d3js for topology visualization and click to select switch
+
+Assume a CouchDB database.  You will be the customers for Ryu Faucet + pyodbc project.  This UI program will interrogate a Database via pyodbc in the backend.  The front end will be a web application.  The project has 2 parts - (1)  UI design and development (2) integration of UI with the backend.  Assume this web application runs on the same machine as the controller.
+
+You will never directly communicate with the switch, but, will always go to the database.
+
+You should be able to get: Switch info for each switch selected which includes # of ports available, # of ports configured, how it is used, flows installed in each of the tables, counters, etc
+
+Use tags to overlay information on visualization
+Add support for Flow Management - Add, update, delete based on Application .  This way, one can delete flows if an application is removed.
